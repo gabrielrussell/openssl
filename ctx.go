@@ -21,6 +21,7 @@ package openssl
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/conf.h>
+#include <openssl/x509.h>
 
 static long SSL_CTX_set_options_not_a_macro(SSL_CTX* ctx, long options) {
    return SSL_CTX_set_options(ctx, options);
@@ -108,6 +109,12 @@ static const SSL_METHOD *OUR_TLSv1_2_method() {
 #endif
 
 extern int verify_cb(int ok, X509_STORE_CTX* store);
+
+typedef STACK_OF(X509_NAME) *STACK_OF_X509_NAME_not_a_macro;
+
+static void sk_X509_NAME_pop_free_not_a_macro(STACK_OF_X509_NAME_not_a_macro st) {
+		sk_X509_NAME_pop_free(st, X509_NAME_free);
+}
 */
 import "C"
 
@@ -305,6 +312,97 @@ func (c *Ctx) UseCertificate(cert *Certificate) error {
 	return nil
 }
 
+// UseCertificateChainFromFile loads a certificate chain from file into ctx.
+// The certificates must be in PEM format and must be sorted starting with the
+// subject's certificate (actual client or server certificate), followed by
+// intermediate CA certificates if applicable, and ending at the highest level
+// (root) CA. See
+// https://www.openssl.org/docs/ssl/SSL_CTX_use_certificate.html
+func (c *Ctx) UseCertificateChainFile(cert_file string) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	var c_cert_file *C.char
+	if cert_file != "" {
+		c_cert_file = C.CString(cert_file)
+		defer C.free(unsafe.Pointer(c_cert_file))
+	}
+	if int(C.SSL_CTX_use_certificate_chain_file(c.ctx, c_cert_file)) != 1 {
+		return errorFromErrorQueue()
+	}
+	return nil
+}
+
+// UsePrivateKeyFile adds the first private key found in file to the *Ctx, c. The
+// formatting type of the certificate must be specified from the known types
+// FiletypePEM, and FiletypeASN1
+func (c *Ctx) UsePrivateKeyFile(key_file string, file_type Filetypes) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	var c_key_file *C.char
+	if key_file != "" {
+		c_key_file = C.CString(key_file)
+		defer C.free(unsafe.Pointer(c_key_file))
+	}
+	if int(C.SSL_CTX_use_PrivateKey_file(c.ctx, c_key_file, C.int(file_type))) != 1 {
+		return errorFromErrorQueue()
+	}
+	return nil
+}
+
+// CheckPrivateKey verifies that the private key agrees with the corresponding
+// public key in the certificate
+func (c *Ctx) CheckPrivateKey() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if int(C.SSL_CTX_check_private_key(c.ctx)) != 1 {
+		return errorFromErrorQueue()
+	}
+	return nil
+}
+
+type StackOfX509Name struct {
+	stack C.STACK_OF_X509_NAME_not_a_macro
+	// shared indicates weather we are the sole owner of this pointer, and implies
+	// weather we should or shouldn't free the underlying data structure
+	// when this go data structure goes out of scope
+	shared bool
+}
+
+// LoadClientCAFile reads certificates from file and returns a StackOfX509Name
+// with the subject names found. See
+// https://www.openssl.org/docs/ssl/SSL_load_client_CA_file.html
+func LoadClientCAFile(ca_file string) (*StackOfX509Name, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	var c_ca_file *C.char
+	if ca_file != "" {
+		c_ca_file = C.CString(ca_file)
+		defer C.free(unsafe.Pointer(c_ca_file))
+	}
+	stack := C.SSL_load_client_CA_file(c_ca_file)
+	if stack == nil {
+		return nil, errorFromErrorQueue()
+	}
+	caList := StackOfX509Name{
+		stack:  stack,
+		shared: false,
+	}
+	runtime.SetFinalizer(&caList, func(c *StackOfX509Name) {
+		if !c.shared {
+			C.sk_X509_NAME_pop_free_not_a_macro(c.stack)
+		}
+	})
+	return &caList, nil
+}
+
+// SetClientCAList sets the list of CAs sent to the client when requesting a
+// client certificate for Ctx. See
+// https://www.openssl.org/docs/ssl/SSL_CTX_set_client_CA_list.html
+func (c *Ctx) SetClientCAList(caList *StackOfX509Name) {
+	C.SSL_CTX_set_client_CA_list(c.ctx, caList.stack)
+	caList.shared = true
+}
+
 // AddChainCertificate adds a certificate to the chain presented in the
 // handshake.
 func (c *Ctx) AddChainCertificate(cert *Certificate) error {
@@ -462,6 +560,7 @@ const (
 	CipherServerPreference             Options = C.SSL_OP_CIPHER_SERVER_PREFERENCE
 	NoSessionResumptionOrRenegotiation Options = C.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION
 	NoTicket                           Options = C.SSL_OP_NO_TICKET
+	OpAll                              Options = C.SSL_OP_ALL
 )
 
 // SetOptions sets context options. See
@@ -487,6 +586,7 @@ type Modes int
 const (
 	// ReleaseBuffers is only valid if you are using OpenSSL 1.0.1 or newer
 	ReleaseBuffers Modes = C.SSL_MODE_RELEASE_BUFFERS
+	AutoRetry      Modes = C.SSL_MODE_AUTO_RETRY
 )
 
 // SetMode sets context modes. See
@@ -508,6 +608,13 @@ const (
 	VerifyPeer             VerifyOptions = C.SSL_VERIFY_PEER
 	VerifyFailIfNoPeerCert VerifyOptions = C.SSL_VERIFY_FAIL_IF_NO_PEER_CERT
 	VerifyClientOnce       VerifyOptions = C.SSL_VERIFY_CLIENT_ONCE
+)
+
+type Filetypes int
+
+const (
+	FiletypePEM  Filetypes = C.SSL_FILETYPE_PEM
+	FiletypeASN1 Filetypes = C.SSL_FILETYPE_ASN1
 )
 
 type VerifyCallback func(ok bool, store *CertificateStoreCtx) bool

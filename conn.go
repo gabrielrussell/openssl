@@ -369,6 +369,19 @@ func (c *Conn) PeerCertificateChain() (rv []*Certificate, err error) {
 	return rv, nil
 }
 
+// GetVerifyResult gets result of peer certificate verification
+// SSL_get_verify_result() returns the result of the verification of the X509
+// certificate presented by the peer, if any. See
+// https://www.openssl.org/docs/ssl/SSL_get_verify_result.html
+func (c *Conn) GetVerifyResults() error {
+	result := C.SSL_get_verify_result(c.ssl)
+	if int(result) != 0 {
+		return errors.New(C.GoString(
+			C.X509_verify_cert_error_string(result)))
+	}
+	return nil
+}
+
 type ConnectionState struct {
 	Certificate           *Certificate
 	CertificateError      error
