@@ -18,7 +18,8 @@ package openssl
 
 /*
 
-#cgo pkg-config: libssl
+#cgo windows LDFLAGS:  -lssleay32 -llibeay32 -L c:/openssl/bin
+#cgo windows CFLAGS: -I"c:/openssl/include"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
