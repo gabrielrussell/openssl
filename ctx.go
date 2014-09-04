@@ -417,7 +417,7 @@ const (
 	ExtendedCRLSupport X509VerificationFlag = C.X509_V_FLAG_EXTENDED_CRL_SUPPORT
 	UseDeltas          X509VerificationFlag = C.X509_V_FLAG_USE_DELTAS
 	CheckSsSignature   X509VerificationFlag = C.X509_V_FLAG_CHECK_SS_SIGNATURE
-	TrustedFirst       X509VerificationFlag = C.X509_V_FLAG_TRUSTED_FIRST
+//	TrustedFirst       X509VerificationFlag = C.X509_V_FLAG_TRUSTED_FIRST
 	PolicyMask         X509VerificationFlag = C.X509_V_FLAG_POLICY_MASK
 )
 
