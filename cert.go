@@ -391,3 +391,17 @@ func (c *Certificate) GetSerialNumberHex() (serial string) {
 	C.OPENSSL_free_not_a_macro(unsafe.Pointer(hex))
 	return
 }
+
+func (c *Certificate) X509NamePrintEx() (out []byte, err error) {
+	bio := C.BIO_new(C.BIO_s_mem())
+	if bio == nil {
+		return nil, errors.New("failed to allocate memory BIO")
+	}
+	defer C.BIO_free(bio)
+	name := C.X509_get_subject_name(c.x)
+	// TODO, pass in flags instead of using this hardcoded one
+	if int(C.X509_NAME_print_ex(bio, name, 0, C.XN_FLAG_RFC2253)) < 0 {
+		return nil, errors.New("failed formatting subject")
+	}
+	return ioutil.ReadAll(asAnyBio(bio))
+}
