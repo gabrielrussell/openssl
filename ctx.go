@@ -115,6 +115,8 @@ typedef STACK_OF(X509_NAME) *STACK_OF_X509_NAME_not_a_macro;
 static void sk_X509_NAME_pop_free_not_a_macro(STACK_OF_X509_NAME_not_a_macro st) {
 		sk_X509_NAME_pop_free(st, X509_NAME_free);
 }
+
+extern int password_cb(char *buf, int size, int rwflag, void *password);
 */
 import "C"
 
@@ -339,6 +341,26 @@ func (c *Ctx) UsePrivateKeyFile(key_file string, file_type Filetypes) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	var c_key_file *C.char
+	if key_file != "" {
+		c_key_file = C.CString(key_file)
+		defer C.free(unsafe.Pointer(c_key_file))
+	}
+	if int(C.SSL_CTX_use_PrivateKey_file(c.ctx, c_key_file, C.int(file_type))) != 1 {
+		return errorFromErrorQueue()
+	}
+	return nil
+}
+
+func (c *Ctx) UsePrivateKeyFileWithPassword(key_file string, file_type Filetypes, password string) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	var c_key_file *C.char
+
+	c_pwd := C.CString(password)
+	defer C.free(unsafe.Pointer(c_pwd))
+	C.SSL_CTX_set_default_passwd_cb_userdata(c.ctx, unsafe.Pointer(c_pwd))
+	C.SSL_CTX_set_default_passwd_cb(c.ctx, (*C.pem_password_cb)(C.password_cb))
+
 	if key_file != "" {
 		c_key_file = C.CString(key_file)
 		defer C.free(unsafe.Pointer(c_key_file))
