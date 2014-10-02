@@ -1,4 +1,5 @@
 // +build cgo
+// +build -darwin
 
 package openssl
 
