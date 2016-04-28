@@ -4,6 +4,8 @@
 #include <openssl/err.h>
 #include <openssl/x509_vfy.h>
 #include <openssl/x509v3.h>
+#include <openssl/safestack.h>
+
 #if defined(_WIN32)
 #include <wincrypt.h>
 #elif defined(__APPLE__)
@@ -186,15 +188,20 @@ int main(int argc, char **argv) {
 
 
     FILE *f = fopen("mongodb.com.pem","r");
-    X509 *cert = PEM_read_X509(f,NULL,NULL,NULL);
+    X509 *cert1 = PEM_read_X509(f,NULL,NULL,NULL);
+    X509 *cert2 = PEM_read_X509(f,NULL,NULL,NULL);
 
-    X509_STORE *cert_store = X509_STORE_new();
+    X509_STORE *cert_store = SSL_CTX_get_cert_store(ctx);
 
-    X509_STORE_CTX cert_ctx;
+    STACK_OF(X509) *chain = sk_X509_new_null();
+    sk_X509_push(chain,cert2);
 
-    X509_STORE_CTX_init(&cert_ctx,cert_store,cert,NULL);
+    X509_STORE_CTX *cert_ctx = X509_STORE_CTX_new();
+    X509_STORE_CTX_init(cert_ctx,cert_store,cert1,chain);
     
-    int r = X509_verify_cert(&cert_ctx);
-    printf("verify %d\n",r);
+    int r = X509_verify_cert(cert_ctx);
+    if (r!=1) {
+        printf("verify %d %s\n",r,X509_verify_cert_error_string(X509_STORE_CTX_get_error(cert_ctx)));
+    }
 
 }
