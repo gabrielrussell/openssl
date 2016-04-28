@@ -10,6 +10,8 @@
 #include <Security/Security.h>
 #endif
 
+#include <fcntl.h>
+
 //std::string SSLManagerInterface::getSSLErrorMessage(int code) {
 //    // 120 from the SSL documentation for ERR_error_string
 //    static const size_t msglen = 120;
@@ -161,4 +163,38 @@ static int _setupSystemCA(SSL_CTX* context, char * err, size_t err_len) {
     return importKeychainToX509_STORE(verifyStore,err,err_len);
 #endif
 #endif
+}
+
+int main(int argc, char **argv) {
+    char err_buf[1024];
+    size_t err_len = 1024;
+    char *err = err_buf;
+
+    ERR_load_crypto_strings();
+    SSL_library_init();
+    SSL_load_error_strings();
+
+    SSL_CTX *ctx = SSL_CTX_new(TLSv1_method());
+    if (ctx==NULL) {
+        ERR_error_string_n(ERR_get_error(),err,err_len);
+        printf("SSL_CTX_new error %s\n",err);
+        exit(1);
+    }
+    int status = _setupSystemCA(ctx,err_buf,1024);
+    if (!status)
+        printf("err: %s",err_buf);
+
+
+    FILE *f = fopen("mongodb.com.pem","r");
+    X509 *cert = PEM_read_X509(f,NULL,NULL,NULL);
+
+    X509_STORE *cert_store = X509_STORE_new();
+
+    X509_STORE_CTX cert_ctx;
+
+    X509_STORE_CTX_init(&cert_ctx,cert_store,cert,NULL);
+    
+    int r = X509_verify_cert(&cert_ctx);
+    printf("verify %d\n",r);
+
 }
